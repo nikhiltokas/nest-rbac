@@ -1,0 +1,506 @@
+{
+  "info": {
+    "name": "Nest-RBAC",
+    "description": "All 12 API routes in one collection. Start the API with vp run start:dev. Set baseUrl and the sample account values in this collection's Variables tab. The default baseUrl is http://localhost:3000 (no trailing slash). Run Auth > Register for a new account, or Auth > Login for an existing account. Both save accessToken to collection variables. Then run Comments or Notes in order: Create, List, Get, Update, Delete. Create saves the resource UUID for later requests. Delete removes the resource; rerun Create to repeat the workflow. No separate environment is required. Avoid environment variables with the same names, because they override collection variables. Registration requires a unique email and username; repeated registration returns 409. Reads are public; writes use the bearer token. Only the owner can update or delete a resource. Each request checks its expected success status.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "email",
+      "value": "postman.user@example.com",
+      "type": "string"
+    },
+    {
+      "key": "password",
+      "value": "PostmanPass123!",
+      "type": "string"
+    },
+    {
+      "key": "firstName",
+      "value": "Postman",
+      "type": "string"
+    },
+    {
+      "key": "lastName",
+      "value": "User",
+      "type": "string"
+    },
+    {
+      "key": "username",
+      "value": "postman_user",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "commentId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "noteId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "limit",
+      "value": "20",
+      "type": "string"
+    },
+    {
+      "key": "offset",
+      "value": "0",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "description": "Public registration and login endpoints. Email is trimmed and lowercased; password must be 8-40 characters. Registration requires firstName (1-50 nonblank characters), username (3-30 letters, digits, or underscores), and a unique email and username. lastName is optional (1-50 nonblank characters); remove it from the body to omit it. Do not send role or other unknown properties. Both endpoints return { accessToken, user } and save the token in collection variables.",
+      "item": [
+        {
+          "name": "Register",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Returns 201 Created', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "if (pm.response.code === 201) {",
+                  "  const session = pm.response.json();",
+                  "  pm.collectionVariables.set('accessToken', session.accessToken);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"{{firstName}}\",\n  \"lastName\": \"{{lastName}}\",\n  \"username\": \"{{username}}\",\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/auth/register",
+            "description": "Public endpoint. Returns { accessToken, user } with HTTP 201. HTTP 400 indicates invalid input; HTTP 409 means the email or username is already registered. Change both collection variable values for a new account, or use Auth Login for an existing account. A successful response saves accessToken for the Comments and Notes folders.",
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Returns 200 OK', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "if (pm.response.code === 200) {",
+                  "  const session = pm.response.json();",
+                  "  pm.collectionVariables.set('accessToken', session.accessToken);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/auth/login",
+            "description": "Public endpoint. Returns { accessToken, user } with HTTP 200. Invalid input returns HTTP 400; incorrect credentials return HTTP 401. Use the same email and password as registration.",
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Comments",
+      "description": "Run Auth Register or Auth Login first using this collection's variables. Run these requests in order to create, list, read, update, and delete a comment. Create saves commentId. Read endpoints are public; writes inherit bearer authentication. Only the owner can update or delete a comment; a missing comment or one owned by another user returns HTTP 404 for writes. content is required, must contain a non-whitespace character, and must be 1-250 characters. Do not send userId; ownership comes from the token.",
+      "item": [
+        {
+          "name": "Create Comment",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Returns 201 Created', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "if (pm.response.code === 201) {",
+                  "  pm.collectionVariables.set('commentId', pm.response.json().id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"My first comment from Postman.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/comments",
+            "description": "Requires a valid bearer token. Returns the created comment with HTTP 201 and saves its UUID as commentId in collection variables."
+          }
+        },
+        {
+          "name": "List Comments",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Returns 200 OK', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/comments?limit={{limit}}&offset={{offset}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["comments"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "{{limit}}",
+                  "description": "Integer from 1 to 100; defaults to 20 when omitted."
+                },
+                {
+                  "key": "offset",
+                  "value": "{{offset}}",
+                  "description": "Nonnegative integer; defaults to 0 when omitted."
+                }
+              ]
+            },
+            "description": "Public endpoint. Returns a plain array of comments from all users, ordered by createdAt descending, then id descending."
+          }
+        },
+        {
+          "name": "Get Comment",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Returns 200 OK', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/comments/{{commentId}}",
+            "description": "Public endpoint. Requires a comment UUID. Run Create Comment first, or set commentId to an existing UUID. Returns HTTP 404 if absent and HTTP 400 for an invalid UUID."
+          }
+        },
+        {
+          "name": "Update Comment",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Returns 200 OK', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Updated comment from Postman.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/comments/{{commentId}}",
+            "description": "Requires the owner's bearer token and a comment UUID. content is required. Returns the updated comment with HTTP 200."
+          }
+        },
+        {
+          "name": "Delete Comment",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Returns 204 No Content', function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/comments/{{commentId}}",
+            "description": "Requires the owner's bearer token and a comment UUID. Deletes the comment and returns HTTP 204 with an empty body. Run Create Comment again before repeating the workflow."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Notes",
+      "description": "Run Auth Register or Auth Login first using this collection's variables. Run these requests in order to create, list, read, update, and delete a note. Create saves noteId. Read endpoints are public; writes inherit bearer authentication. Only the owner can update or delete a note; a missing note or one owned by another user returns HTTP 404 for writes. Both title (1-100 characters) and content (1-1000 characters) are required for create AND update; each must contain a non-whitespace character. Do not send userId; ownership comes from the token.",
+      "item": [
+        {
+          "name": "Create Note",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Returns 201 Created', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "if (pm.response.code === 201) {",
+                  "  pm.collectionVariables.set('noteId', pm.response.json().id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"My first note\",\n  \"content\": \"This note was created from Postman.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/notes",
+            "description": "Requires a valid bearer token. Returns the created note with HTTP 201 and saves its UUID as noteId in collection variables."
+          }
+        },
+        {
+          "name": "List Notes",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Returns 200 OK', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/notes?limit={{limit}}&offset={{offset}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["notes"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "{{limit}}",
+                  "description": "Integer from 1 to 100; defaults to 20 when omitted."
+                },
+                {
+                  "key": "offset",
+                  "value": "{{offset}}",
+                  "description": "Nonnegative integer; defaults to 0 when omitted."
+                }
+              ]
+            },
+            "description": "Public endpoint. Returns a plain array of notes from all users, ordered by createdAt descending, then id descending."
+          }
+        },
+        {
+          "name": "Get Note",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Returns 200 OK', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/notes/{{noteId}}",
+            "description": "Public endpoint. Requires a note UUID. Run Create Note first, or set noteId to an existing UUID. Returns HTTP 404 if absent and HTTP 400 for an invalid UUID."
+          }
+        },
+        {
+          "name": "Update Note",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Returns 200 OK', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Updated note\",\n  \"content\": \"This note was updated from Postman.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/notes/{{noteId}}",
+            "description": "Requires the owner's bearer token and a note UUID. Send both title and content even though this uses PATCH. Returns the updated note with HTTP 200."
+          }
+        },
+        {
+          "name": "Delete Note",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Returns 204 No Content', function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/notes/{{noteId}}",
+            "description": "Requires the owner's bearer token and a note UUID. Deletes the note and returns HTTP 204 with an empty body. Run Create Note again before repeating the workflow."
+          }
+        }
+      ]
+    }
+  ]
+}
