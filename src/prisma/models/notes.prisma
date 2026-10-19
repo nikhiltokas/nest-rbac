@@ -1,0 +1,16 @@
+// use prisma-8
+
+/// A standalone note for RBAC practice. userId identifies its owner.
+model Note {
+    id      Uuid   @id @default(uuid(7))
+    title   VarChar(100)
+    content VarChar(1000)
+
+    userId Uuid
+    author User @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+    createdAt temporal.createdAt()
+    updatedAt temporal.updatedAt()
+
+    @@index([userId])
+}
