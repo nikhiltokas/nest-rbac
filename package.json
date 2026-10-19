@@ -23,6 +23,7 @@
     "contract:emit": "prisma contract emit",
     "db:init": "prisma db init",
     "db:verify": "prisma db verify",
+    "db:reset": "vp run contract:emit && prisma migration check && prisma db migrate --show --from @empty && vp run build && node dist/prisma/reset/index.js && prisma db migrate --advance-ref db",
     "db:seed": "vp run build && node dist/prisma/seed/index.js",
     "prepare": "vp config"
   },
