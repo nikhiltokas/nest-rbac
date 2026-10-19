@@ -4,6 +4,7 @@ import { PrismaModule } from '../../../prisma/prisma.module.js';
 import { CredentialsModule } from '../credentials/credentials.module.js';
 import { JwtAuthGuard } from './guards/jwt.auth.guard.js';
 import { LocalAuthGuard } from './guards/local.auth.guard.js';
+import { PermissionsGuard } from './guards/permissions.guard.js';
 import { RolesGuard } from './guards/roles.guard.js';
 import { JwtStrategy } from './strategies/jwt.strategy.js';
 
@@ -13,7 +14,19 @@ import { JwtStrategy } from './strategies/jwt.strategy.js';
     PrismaModule,
     PassportModule.register({ session: false }),
   ],
-  providers: [JwtStrategy, JwtAuthGuard, LocalAuthGuard, RolesGuard],
-  exports: [JwtAuthGuard, LocalAuthGuard, RolesGuard, PassportModule],
+  providers: [
+    JwtStrategy,
+    JwtAuthGuard,
+    LocalAuthGuard,
+    RolesGuard,
+    PermissionsGuard,
+  ],
+  exports: [
+    JwtAuthGuard,
+    LocalAuthGuard,
+    RolesGuard,
+    PermissionsGuard,
+    PassportModule,
+  ],
 })
 export class SecurityModule {}

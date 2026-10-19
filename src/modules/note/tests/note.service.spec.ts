@@ -1,7 +1,8 @@
 import 'reflect-metadata';
-import { NotFoundException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import type { PrismaService } from '../../../prisma/prisma.service.js';
+import type { AuthorizationActor } from '../../auth/shared/contracts/authorization-actor.type.js';
 import { NoteDto } from '../dto/note.dto.js';
 import { NoteService } from '../note.service.js';
 
@@ -12,6 +13,9 @@ describe('notes', () => {
   };
   const input = plainToInstance(NoteDto, fields);
   const note = { id: 'note-id', userId: 'owner-id', ...fields };
+  const owner: AuthorizationActor = { id: note.userId, role: 'MODERATOR' };
+  const otherUser: AuthorizationActor = { id: 'other-id', role: 'MODERATOR' };
+  const admin: AuthorizationActor = { id: 'admin-id', role: 'SUPER_ADMIN' };
   let service: NoteService;
   let create: ReturnType<typeof vi.fn>;
   let stored: typeof note | null;
@@ -23,16 +27,22 @@ describe('notes', () => {
       create,
       first: ({ id }: { id: string }) =>
         Promise.resolve(stored?.id === id ? stored : null),
-      where: (filter: { id: string; userId: string }) => ({
+      where: (filter: { id: string; userId?: string }) => ({
         update: (data: NoteDto) => {
-          if (stored?.id !== filter.id || stored?.userId !== filter.userId) {
+          if (
+            stored?.id !== filter.id ||
+            (filter.userId !== undefined && stored.userId !== filter.userId)
+          ) {
             return Promise.resolve(null);
           }
           stored = { ...stored, title: data.title, content: data.content };
           return Promise.resolve(stored);
         },
         delete: () => {
-          if (stored?.id !== filter.id || stored?.userId !== filter.userId) {
+          if (
+            stored?.id !== filter.id ||
+            (filter.userId !== undefined && stored.userId !== filter.userId)
+          ) {
             return Promise.resolve(null);
           }
           const deleted = stored;
@@ -52,9 +62,7 @@ describe('notes', () => {
       ...fields,
       userId: 'another-user',
     });
-    await expect(service.create(suppliedInput, note.userId)).resolves.toEqual(
-      note,
-    );
+    await expect(service.create(suppliedInput, owner)).resolves.toEqual(note);
     expect(create).toHaveBeenCalledWith({ ...fields, userId: note.userId });
   });
 
@@ -74,39 +82,107 @@ describe('notes', () => {
       content: 'Updated content',
     };
     await expect(
-      service.update(note.id, plainToInstance(NoteDto, changes), note.userId),
+      service.update(note.id, plainToInstance(NoteDto, changes), owner),
     ).resolves.toEqual({ ...note, ...changes });
     expect(stored).toEqual({ ...note, ...changes });
   });
 
-  it('allows the owner to delete a note', async () => {
-    await expect(service.remove(note.id, note.userId)).resolves.toBeUndefined();
+  it('allows a super admin to delete a note', async () => {
+    await expect(service.remove(note.id, admin)).resolves.toBeUndefined();
     expect(stored).toBeNull();
   });
 
   it('rejects edits by another user without changing the note', async () => {
     await expect(
-      service.update(note.id, input, 'another-user'),
+      service.update(note.id, input, otherUser),
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(stored).toEqual(note);
   });
 
-  it('rejects deletion by another user without deleting the note', async () => {
-    await expect(
-      service.remove(note.id, 'another-user'),
-    ).rejects.toBeInstanceOf(NotFoundException);
+  it('denies deletion by a moderator without deleting the note', async () => {
+    await expect(service.remove(note.id, otherUser)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
     expect(stored).toEqual(note);
   });
 
   it('rejects an update to a missing note', async () => {
     await expect(
-      service.update('missing', input, note.userId),
+      service.update('missing', input, owner),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('rejects deletion of a missing note', async () => {
-    await expect(service.remove('missing', note.userId)).rejects.toBeInstanceOf(
+    await expect(service.remove('missing', admin)).rejects.toBeInstanceOf(
       NotFoundException,
     );
+  });
+
+  it('keeps moderators from editing other users notes', async () => {
+    const moderator: AuthorizationActor = { id: 'mod-id', role: 'MODERATOR' };
+    await expect(
+      service.update(note.id, input, moderator),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(stored).toEqual(note);
+  });
+
+  it('allows super admins to edit and delete another users note', async () => {
+    const changes = plainToInstance(NoteDto, {
+      title: 'Admin edit',
+      content: 'Updated by an admin',
+    });
+    await expect(service.update(note.id, changes, admin)).resolves.toEqual({
+      ...note,
+      title: changes.title,
+      content: changes.content,
+    });
+    await expect(service.remove(note.id, admin)).resolves.toBeUndefined();
+    expect(stored).toBeNull();
+  });
+
+  it('still returns 404 for a super admin targeting a missing note', async () => {
+    await expect(
+      service.update('missing', input, admin),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.remove('missing', admin)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    expect(stored).toEqual(note);
+  });
+
+  it('denies direct service calls with an unknown role', async () => {
+    const actor = {
+      id: note.userId,
+      role: 'UNKNOWN',
+    } as unknown as AuthorizationActor;
+    expect(() => service.create(input, actor)).toThrow(ForbiddenException);
+    await expect(service.update(note.id, input, actor)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    await expect(service.remove(note.id, actor)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(create).not.toHaveBeenCalled();
+    expect(stored).toEqual(note);
+  });
+
+  it('keeps users read-only even when they own the note', async () => {
+    const user: AuthorizationActor = { id: note.userId, role: 'USER' };
+    expect(() => service.create(input, user)).toThrow(ForbiddenException);
+    await expect(service.update(note.id, input, user)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    await expect(service.remove(note.id, user)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(create).not.toHaveBeenCalled();
+    expect(stored).toEqual(note);
+  });
+
+  it('denies deletion by a moderator even when they own the note', async () => {
+    await expect(service.remove(note.id, owner)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(stored).toEqual(note);
   });
 });
