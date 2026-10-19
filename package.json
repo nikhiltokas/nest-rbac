@@ -23,6 +23,7 @@
     "contract:emit": "prisma contract emit",
     "db:init": "prisma db init",
     "db:verify": "prisma db verify",
+    "db:seed": "vp run build && node dist/prisma/seed/index.js",
     "prepare": "vp config"
   },
   "dependencies": {
