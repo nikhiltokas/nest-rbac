@@ -30,6 +30,6 @@ export default defineConfig({
     trailingComma: 'all',
     printWidth: 80,
     sortPackageJson: false,
-    ignorePatterns: [],
+    ignorePatterns: ['src/prisma/generated/**'],
   },
 });

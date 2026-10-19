@@ -1,0 +1,11 @@
+# Generated contract artifacts.
+src/prisma/generated/contract.json linguist-generated
+src/prisma/generated/contract.d.ts linguist-generated
+
+# Generated migration artifacts. Keep editable migration.ts files reviewable.
+migrations/**/ops.json linguist-generated
+migrations/**/migration.json linguist-generated
+
+# Generated contract snapshots used by migrations.
+migrations/snapshots/**/contract.json linguist-generated
+migrations/snapshots/**/contract.d.ts linguist-generated

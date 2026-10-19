@@ -1,0 +1,15 @@
+// use prisma-8
+
+/// Resource for RBAC practice. Application policies use userId for ownership checks.
+model Comment {
+    id      Uuid   @id @default(uuid(7))
+    content VarChar(250)
+
+    userId Uuid
+    author User @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+    createdAt temporal.createdAt()
+    updatedAt temporal.updatedAt()
+
+    @@index([userId])
+}

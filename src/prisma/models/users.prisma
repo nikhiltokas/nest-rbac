@@ -1,0 +1,28 @@
+// use prisma-8
+
+/// Coarse-grained authorization role. Extend per product
+enum UserRole {
+    SUPER_ADMIN
+    MODERATOR
+    USER
+}
+
+/// User — the canonical identity record. Holds no secrets.
+model User {
+    id   Uuid   @id @default(uuid(7))
+    role UserRole @default(USER)
+
+    firstName     VarChar(50)
+    lastName      VarChar(50)?
+    username      String  @unique
+    email         String  @unique
+
+    // Audit.
+    createdBy String?
+    updatedBy String?
+    createdAt temporal.createdAt()
+    updatedAt temporal.updatedAt()
+
+    // Relationships
+    comments Comment[]
+}
