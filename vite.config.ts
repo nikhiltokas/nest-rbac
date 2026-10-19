@@ -19,6 +19,7 @@ export default defineConfig(({ mode }) => ({
     '*': 'vp check --fix',
   },
   lint: {
+    ignorePatterns: ['src/prisma/generated/**', 'src/prisma/migration/**'],
     rules: {
       'typescript/no-explicit-any': 'off',
       'typescript/no-floating-promises': 'error',
@@ -44,6 +45,6 @@ export default defineConfig(({ mode }) => ({
     trailingComma: 'all',
     printWidth: 80,
     sortPackageJson: false,
-    ignorePatterns: ['src/prisma/generated/**'],
+    ignorePatterns: ['src/prisma/generated/**', 'src/prisma/migration/**'],
   },
 }));

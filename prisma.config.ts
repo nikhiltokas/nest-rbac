@@ -7,6 +7,9 @@ import { defineConfig as ormConfig } from '@prisma/orm-postgres/config';
 let orm = ormConfig({
   contract: './src/prisma/models/**/*.prisma',
   output: './src/prisma/generated',
+  migrations: {
+    dir: './src/prisma/migration',
+  },
   db: {
     connection: process.env['DATABASE_URL']!,
   },

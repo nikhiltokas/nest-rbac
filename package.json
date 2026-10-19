@@ -21,6 +21,8 @@
     "test:debug": "vp test --inspect-brk --no-file-parallelism",
     "test:e2e": "vp test run --mode e2e",
     "contract:emit": "prisma contract emit",
+    "db:init": "prisma db init",
+    "db:verify": "prisma db verify",
     "prepare": "vp config"
   },
   "dependencies": {
