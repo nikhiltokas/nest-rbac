@@ -8,11 +8,11 @@ import { httpContext } from './helpers/http-context.js';
 describe('Roles decorator and guard', () => {
   const guard = new RolesGuard(new Reflector());
 
-  @Roles('MODERATOR')
+  @Roles(Roles.MODERATOR)
   class Controller {
     route(this: void) {}
 
-    @Roles('SUPER_ADMIN', 'USER')
+    @Roles(Roles.SUPER_ADMIN, Roles.USER)
     override(this: void) {}
   }
 
