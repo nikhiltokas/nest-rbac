@@ -7,7 +7,7 @@ enum UserRole {
     USER
 }
 
-/// User — the canonical identity record. Holds no secrets.
+/// User — the canonical identity record.
 model User {
     id   Uuid   @id @default(uuid(7))
     role UserRole @default(USER)
@@ -16,6 +16,7 @@ model User {
     lastName      VarChar(50)?
     username      String  @unique
     email         String  @unique
+    passwordHash  String
 
     // Audit.
     createdBy String?
@@ -25,4 +26,5 @@ model User {
 
     // Relationships
     comments Comment[]
+    notes    Note[]
 }
