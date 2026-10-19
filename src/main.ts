@@ -1,7 +1,8 @@
 import 'reflect-metadata';
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
+import { PermissionConfigurationError } from './modules/auth/security/errors/permission-configuration.error.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -13,6 +14,14 @@ async function bootstrap() {
     }),
   );
   app.enableShutdownHooks();
-  await app.listen(process.env.PORT ?? 3000);
+  try {
+    await app.listen(process.env.PORT!);
+  } catch (error) {
+    if (!(error instanceof PermissionConfigurationError)) throw error;
+
+    Logger.error(error.message, 'Permissions');
+    process.exitCode = 1;
+    await app.close();
+  }
 }
 await bootstrap();
