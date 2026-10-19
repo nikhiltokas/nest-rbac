@@ -1,13 +1,9 @@
-import {
-  Injectable,
-  InternalServerErrorException,
-  type OnApplicationBootstrap,
-} from '@nestjs/common';
-
+import { Injectable, type OnApplicationBootstrap } from '@nestjs/common';
 import { PATH_METADATA } from '@nestjs/common/constants';
 import { DiscoveryService, MetadataScanner, Reflector } from '@nestjs/core';
 import { PermissionConfigurationError } from '../errors/permission-configuration.error.js';
-import { resolvePermissionRequirement } from '../utils/resolve-permission-requirement.js';
+import { AuthorizationConfigurationException } from '../../shared/errors/authorization-configuration.exception.js';
+import { validateRouteAuthorization } from '../utils/validate-route-authorization.js';
 
 @Injectable()
 export class PermissionRoutesValidator implements OnApplicationBootstrap {
@@ -30,9 +26,10 @@ export class PermissionRoutesValidator implements OnApplicationBootstrap {
         if (!Reflect.hasMetadata(PATH_METADATA, handler)) continue;
 
         try {
-          resolvePermissionRequirement(this.reflector, controller, handler);
+          validateRouteAuthorization(this.reflector, controller, handler);
         } catch (error) {
-          if (!(error instanceof InternalServerErrorException)) throw error;
+          if (!(error instanceof AuthorizationConfigurationException))
+            throw error;
           errors.push(error.message);
         }
       }

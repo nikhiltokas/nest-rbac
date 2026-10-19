@@ -4,4 +4,4 @@ import type { Permission } from '../enums/permission.enum.js';
 
 export const RequirePermissions = (
   ...permissions: [Permission, ...Permission[]]
-) => SetMetadata(PERMISSIONS_KEY, permissions);
+): MethodDecorator => SetMetadata(PERMISSIONS_KEY, permissions);

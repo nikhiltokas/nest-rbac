@@ -5,7 +5,7 @@ import type { UserRole } from '../contracts/user-role.type.js';
 import { RolesGuard } from '../../security/guards/roles.guard.js';
 
 export const Roles = Object.assign(
-  (...roles: UserRole[]) =>
+  (...roles: [UserRole, ...UserRole[]]) =>
     applyDecorators(SetMetadata(ROLES_KEY, roles), UseGuards(RolesGuard)),
   Role,
 );

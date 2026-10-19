@@ -4,7 +4,10 @@ import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import type { PrismaService } from '../../../../prisma/prisma.service.js';
 import { IS_PUBLIC_KEY } from '../../shared/constants/auth-metadata.constant.js';
+import { RequirePermissions } from '../../shared/decorators/permissions.decorator.js';
 import { Public } from '../../shared/decorators/public.decorator.js';
+import { Roles } from '../../shared/decorators/roles.decorator.js';
+import { Permission } from '../../shared/enums/permission.enum.js';
 import { JwtAuthGuard } from '../guards/jwt.auth.guard.js';
 import { JwtStrategy } from '../strategies/jwt.strategy.js';
 import { httpContext } from './helpers/http-context.js';
@@ -36,6 +39,7 @@ describe('JwtAuthGuard and JwtStrategy', () => {
     };
     expect(await guard.canActivate(httpContext(request))).toBe(true);
     expect(request.user).toEqual(user);
+    expect(first).toHaveBeenCalledWith({ id });
   });
 
   it.each([undefined, 'Basic credentials', 'Bearer', 'Bearer token extra'])(
@@ -121,5 +125,77 @@ describe('JwtAuthGuard and JwtStrategy', () => {
         httpContext({ headers: {} }, Controller.prototype.route, Controller),
       ),
     ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it('ignores an invalid token on an unrestricted public route', () => {
+    class Controller {
+      @Public()
+      route(this: void) {}
+    }
+    expect(
+      guard.canActivate(
+        httpContext(
+          { headers: { authorization: 'Bearer invalid' } },
+          Controller.prototype.route,
+          Controller,
+        ),
+      ),
+    ).toBe(true);
+    expect(first).not.toHaveBeenCalled();
+  });
+
+  it.each(['roleRestricted', 'permissionRestricted'] as const)(
+    'requires authentication when a public method is %s',
+    async (method) => {
+      class Controller {
+        @Public()
+        @Roles(Roles.USER)
+        roleRestricted(this: void) {}
+
+        @Public()
+        @RequirePermissions(Permission.UPDATE)
+        permissionRestricted(this: void) {}
+      }
+      await expect(
+        guard.canActivate(
+          httpContext(
+            { headers: {} },
+            Controller.prototype[method],
+            Controller,
+          ),
+        ),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+    },
+  );
+
+  it('requires authentication for a public controller with inherited roles', async () => {
+    @Public()
+    @Roles(Roles.USER)
+    class Controller {
+      route(this: void) {}
+    }
+    await expect(
+      guard.canActivate(
+        httpContext({ headers: {} }, Controller.prototype.route, Controller),
+      ),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it('authenticates a public route when explicit permissions are present', async () => {
+    @Public()
+    class Controller {
+      @RequirePermissions(Permission.UPDATE)
+      route(this: void) {}
+    }
+    const request = {
+      headers: { authorization: `Bearer ${jwt.sign({ sub: id })}` },
+      user: undefined,
+    };
+    await expect(
+      guard.canActivate(
+        httpContext(request, Controller.prototype.route, Controller),
+      ),
+    ).resolves.toBe(true);
+    expect(request.user).toEqual(user);
   });
 });

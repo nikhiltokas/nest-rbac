@@ -23,8 +23,8 @@ describe('RequirePermissions and PermissionsGuard', () => {
   const guard = new PermissionsGuard(reflector);
 
   @Policy(TEST_POLICY)
-  @RequirePermissions(Permission.READ)
   class Controller {
+    @RequirePermissions(Permission.READ)
     route(this: void) {}
 
     @RequirePermissions(Permission.UPDATE)
@@ -51,19 +51,19 @@ describe('RequirePermissions and PermissionsGuard', () => {
   });
 
   it.each<UserRole>(['USER', 'MODERATOR', 'SUPER_ADMIN'])(
-    'allows the controller permission for %s',
+    'allows the declared permission for %s',
     (role) => {
       expect(guard.canActivate(context(role))).toBe(true);
     },
   );
 
-  it('denies a user without the additional method permission', () => {
+  it('denies a user without the required method permission', () => {
     expect(() =>
       guard.canActivate(context('USER', Controller.prototype.moderate)),
     ).toThrow('Missing permissions: UPDATE');
   });
 
-  it('allows a moderator with both controller and method permissions', () => {
+  it('allows a moderator with the required method permission', () => {
     expect(
       guard.canActivate(context('MODERATOR', Controller.prototype.moderate)),
     ).toBe(true);
@@ -73,24 +73,6 @@ describe('RequirePermissions and PermissionsGuard', () => {
     expect(() =>
       guard.canActivate(context('MODERATOR', Controller.prototype.admin)),
     ).toThrow('Missing permissions: DELETE');
-  });
-
-  it('does not let method permissions replace controller requirements', () => {
-    @Policy(TEST_POLICY)
-    @RequirePermissions(Permission.UPDATE)
-    class AdminController {
-      @RequirePermissions(Permission.READ)
-      route(this: void) {}
-    }
-    expect(() =>
-      guard.canActivate(
-        httpContext(
-          { user: { role: 'USER' } },
-          AdminController.prototype.route,
-          AdminController,
-        ),
-      ),
-    ).toThrow('Missing permissions: UPDATE');
   });
 
   it('grants super admins all declared permissions', () => {
@@ -136,22 +118,6 @@ describe('RequirePermissions and PermissionsGuard', () => {
     );
     expect(guard.canActivate(restricted)).toBe(true);
     expect(new RolesGuard(reflector).canActivate(restricted)).toBe(false);
-  });
-
-  it('denies a permission requirement when no policy is configured', () => {
-    class MissingPolicyController {
-      @RequirePermissions(Permission.READ)
-      route(this: void) {}
-    }
-    expect(() =>
-      guard.canActivate(
-        httpContext(
-          { user: { role: 'SUPER_ADMIN' } },
-          MissingPolicyController.prototype.route,
-          MissingPolicyController,
-        ),
-      ),
-    ).toThrow('No permission policy configured');
   });
 
   it('checks the same action against each controllers own policy', () => {

@@ -76,6 +76,33 @@ describe('notes', () => {
     );
   });
 
+  it('paginates notes with a stable newest-first order', async () => {
+    const query = {
+      limit: vi.fn().mockReturnThis(),
+      offset: vi.fn().mockReturnThis(),
+      all: vi.fn().mockResolvedValue([note]),
+    };
+    const orderBy = vi.fn().mockReturnValue(query);
+    const prisma = {
+      db: { orm: { public: { Note: { orderBy } } } },
+    } as unknown as PrismaService;
+    await expect(new NoteService(prisma).findAll(5, 10)).resolves.toEqual([
+      note,
+    ]);
+    expect(query.limit).toHaveBeenCalledWith(5);
+    expect(query.offset).toHaveBeenCalledWith(10);
+    const fields = {
+      createdAt: { desc: () => 'createdAt DESC' },
+      id: { desc: () => 'id DESC' },
+    };
+    const [selectors] = orderBy.mock.calls[0];
+    expect(
+      selectors.map((select: (value: typeof fields) => string) =>
+        select(fields),
+      ),
+    ).toEqual(['createdAt DESC', 'id DESC']);
+  });
+
   it('allows the owner to edit a note', async () => {
     const changes = {
       title: 'Updated title',

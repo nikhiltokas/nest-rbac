@@ -84,4 +84,19 @@ describe('Roles decorator and guard', () => {
       ),
     ).toBe(false);
   });
+
+  it.each(['UNKNOWN', 'toString', 'constructor', '__proto__', undefined])(
+    'denies an invalid runtime role %s',
+    (role) => {
+      expect(
+        guard.canActivate(
+          httpContext(
+            { user: { role } },
+            Controller.prototype.route,
+            Controller,
+          ),
+        ),
+      ).toBe(false);
+    },
+  );
 });

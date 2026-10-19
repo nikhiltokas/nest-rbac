@@ -8,27 +8,36 @@ import {
 import { Reflector } from '@nestjs/core';
 import type { AuthenticatedRequest } from '../../credentials/contracts/credentials.types.js';
 
+import {
+  PERMISSIONS_KEY,
+  POLICY_KEY,
+} from '../../shared/constants/auth-metadata.constant.js';
+
+import type { PermissionPolicy } from '../../shared/contracts/permission-policy.type.js';
+import type { Permission } from '../../shared/enums/permission.enum.js';
 import { assertPermissions } from '../../shared/utils/permissions.js';
-import { resolvePermissionRequirement } from '../utils/resolve-permission-requirement.js';
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
-    const requirement = resolvePermissionRequirement(
-      this.reflector,
-      context.getClass(),
+    const required = this.reflector.get<[Permission, ...Permission[]]>(
+      PERMISSIONS_KEY,
       context.getHandler(),
     );
-    if (!requirement) return true;
+    if (!required) return true;
+    const policy = this.reflector.get<PermissionPolicy>(
+      POLICY_KEY,
+      context.getClass(),
+    );
 
     const { user } = context.switchToHttp().getRequest<AuthenticatedRequest>();
     if (!user) {
       throw new ForbiddenException('No authenticated user found');
     }
 
-    assertPermissions(requirement.policy, user.role, ...requirement.required);
+    assertPermissions(policy, user.role, ...required);
     return true;
   }
 }

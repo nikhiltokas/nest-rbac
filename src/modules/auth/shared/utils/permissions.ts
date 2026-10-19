@@ -6,7 +6,7 @@ import type { Permission } from '../enums/permission.enum.js';
 export function assertPermissions(
   policy: PermissionPolicy,
   role: UserRole,
-  ...required: Permission[]
+  ...required: [Permission, ...Permission[]]
 ): void {
   const granted = Object.hasOwn(policy, role) ? policy[role] : [];
   const missing = required.filter(

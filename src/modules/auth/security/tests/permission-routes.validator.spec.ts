@@ -1,4 +1,4 @@
-import 'reflect-metadata';
+﻿import 'reflect-metadata';
 import {
   Controller,
   Delete,
@@ -6,9 +6,9 @@ import {
   Patch,
   Post,
   Scope,
-  SetMetadata,
   type Type,
 } from '@nestjs/common';
+
 import {
   DiscoveryModule,
   DiscoveryService,
@@ -18,14 +18,8 @@ import {
 
 import { Test, type TestingModule } from '@nestjs/testing';
 import { NOTE_POLICY } from '../../../note/policy/note.policy.js';
-
-import {
-  IS_PUBLIC_KEY,
-  PERMISSIONS_KEY,
-} from '../../shared/constants/auth-metadata.constant.js';
-
-import { Policy } from '../../shared/decorators/policy.decorator.js';
 import { RequirePermissions } from '../../shared/decorators/permissions.decorator.js';
+import { Policy } from '../../shared/decorators/policy.decorator.js';
 import { Public } from '../../shared/decorators/public.decorator.js';
 import { Permission } from '../../shared/enums/permission.enum.js';
 import { PermissionConfigurationError } from '../errors/permission-configuration.error.js';
@@ -38,17 +32,7 @@ describe('permission route validation during application bootstrap', () => {
     module = await Test.createTestingModule({
       imports: [DiscoveryModule],
       controllers,
-      providers: [
-        {
-          provide: PermissionRoutesValidator,
-          inject: [DiscoveryService, MetadataScanner, Reflector],
-          useFactory: (
-            discovery: DiscoveryService,
-            scanner: MetadataScanner,
-            reflector: Reflector,
-          ) => new PermissionRoutesValidator(discovery, scanner, reflector),
-        },
-      ],
+      providers: [PermissionRoutesValidator],
     }).compile();
     return module.init();
   }
@@ -61,7 +45,7 @@ describe('permission route validation during application bootstrap', () => {
     await module?.close();
   });
 
-  it('rejects a protected GET route without required permissions', async () => {
+  it('rejects invalid route declarations during application bootstrap', async () => {
     @Controller('comments')
     @Policy(NOTE_POLICY)
     class CommentsController {
@@ -71,11 +55,11 @@ describe('permission route validation during application bootstrap', () => {
     const startup = bootstrap(CommentsController);
     await expect(startup).rejects.toBeInstanceOf(PermissionConfigurationError);
     await expect(startup).rejects.toThrow(
-      'CommentsController.list has a policy but is missing required permissions',
+      'CommentsController.list is missing required permissions.',
     );
   });
 
-  it('reports every invalid route across controllers together', async () => {
+  it('collects missing declarations and method mismatches across controllers', async () => {
     @Controller('comments')
     @Policy(NOTE_POLICY)
     class CommentsController {
@@ -83,6 +67,7 @@ describe('permission route validation during application bootstrap', () => {
       create(this: void) {}
 
       @Delete(':id')
+      @RequirePermissions(Permission.READ)
       remove(this: void) {}
     }
 
@@ -93,14 +78,19 @@ describe('permission route validation during application bootstrap', () => {
       update(this: void) {}
     }
 
-    await expect(
-      bootstrap(CommentsController, NotesController),
-    ).rejects.toThrow(
-      /CommentsController\.create[\s\S]*CommentsController\.remove[\s\S]*NotesController\.update/,
+    const startup = bootstrap(CommentsController, NotesController);
+    await expect(startup).rejects.toThrow(
+      'CommentsController.create is missing required permissions.',
+    );
+    await expect(startup).rejects.toThrow(
+      'CommentsController.remove uses DELETE but does not declare Permission.DELETE.',
+    );
+    await expect(startup).rejects.toThrow(
+      'NotesController.update is missing required permissions.',
     );
   });
 
-  it('accepts valid declarations and public routes and ignores helper methods', async () => {
+  it('accepts valid routes and public routes and ignores helper methods', async () => {
     @Controller('comments')
     @Policy(NOTE_POLICY)
     class CommentsController {
@@ -134,45 +124,7 @@ describe('permission route validation during application bootstrap', () => {
     ).resolves.toBeDefined();
   });
 
-  it('requires permissions when a method overrides controller-level public access', async () => {
-    @Controller('comments')
-    @Policy(NOTE_POLICY)
-    @Public()
-    class CommentsController {
-      @Get('private')
-      @SetMetadata(IS_PUBLIC_KEY, false)
-      privateRoute(this: void) {}
-    }
-    await expect(bootstrap(CommentsController)).rejects.toThrow(
-      'CommentsController.privateRoute has a policy but is missing required permissions',
-    );
-  });
-
-  it('rejects an empty permission declaration', async () => {
-    @Controller('comments')
-    @Policy(NOTE_POLICY)
-    class CommentsController {
-      @Get()
-      @SetMetadata(PERMISSIONS_KEY, [])
-      list(this: void) {}
-    }
-    await expect(bootstrap(CommentsController)).rejects.toThrow(
-      'CommentsController.list has a policy but is missing required permissions',
-    );
-  });
-
-  it('accepts permissions declared at controller level', async () => {
-    @Controller('comments')
-    @Policy(NOTE_POLICY)
-    @RequirePermissions(Permission.READ)
-    class CommentsController {
-      @Get()
-      list(this: void) {}
-    }
-    await expect(bootstrap(CommentsController)).resolves.toBeDefined();
-  });
-
-  it('validates inherited routes on request-scoped controllers', async () => {
+  it('discovers inherited routes on request-scoped controllers', async () => {
     class BaseController {
       @Get()
       list(this: void) {}
@@ -183,19 +135,41 @@ describe('permission route validation during application bootstrap', () => {
     class CommentsController extends BaseController {}
 
     await expect(bootstrap(CommentsController)).rejects.toThrow(
-      'CommentsController.list has a policy but is missing required permissions',
+      'CommentsController.list is missing required permissions.',
     );
   });
 
-  it('rejects required permissions without a controller policy', async () => {
-    @Controller('comments')
+  it('does not hide unexpected failures as configuration diagnostics', () => {
+    @Policy(NOTE_POLICY)
     class CommentsController {
       @Get()
-      @RequirePermissions(Permission.READ)
       list(this: void) {}
     }
-    await expect(bootstrap(CommentsController)).rejects.toThrow(
-      'No permission policy configured for CommentsController.list',
+    const discovery = {
+      getControllers: () => [{ metatype: CommentsController }],
+    } as unknown as DiscoveryService;
+    const reflector = new Reflector();
+    const failure = new Error('Unexpected metadata failure');
+    vi.spyOn(reflector, 'get').mockImplementation(() => {
+      throw failure;
+    });
+    const validator = new PermissionRoutesValidator(
+      discovery,
+      new MetadataScanner(),
+      reflector,
     );
+    expect(() => validator.onApplicationBootstrap()).toThrow(failure);
+  });
+
+  it('ignores discovery entries without a controller class', () => {
+    const discovery = {
+      getControllers: () => [{ metatype: null }],
+    } as unknown as DiscoveryService;
+    const validator = new PermissionRoutesValidator(
+      discovery,
+      new MetadataScanner(),
+      new Reflector(),
+    );
+    expect(() => validator.onApplicationBootstrap()).not.toThrow();
   });
 });

@@ -41,7 +41,12 @@ describe('comment permissions and ownership', () => {
         return Promise.resolve(deleted);
       },
     }));
-    const collection = { create, where };
+    const collection = {
+      create,
+      where,
+      first: ({ id }: { id: string }) =>
+        Promise.resolve(stored?.id === id ? stored : null),
+    };
     const prisma = {
       db: { orm: { public: { Comment: collection } } },
     } as unknown as PrismaService;
@@ -68,6 +73,43 @@ describe('comment permissions and ownership', () => {
       ...comment,
       content: changes.content,
     });
+  });
+
+  it('returns an existing comment without requiring an actor', async () => {
+    await expect(service.findOne(comment.id)).resolves.toEqual(comment);
+  });
+
+  it('returns 404 for a missing comment', async () => {
+    await expect(service.findOne('missing')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+  });
+
+  it('paginates comments with a stable newest-first order', async () => {
+    const query = {
+      limit: vi.fn().mockReturnThis(),
+      offset: vi.fn().mockReturnThis(),
+      all: vi.fn().mockResolvedValue([comment]),
+    };
+    const orderBy = vi.fn().mockReturnValue(query);
+    const prisma = {
+      db: { orm: { public: { Comment: { orderBy } } } },
+    } as unknown as PrismaService;
+    await expect(new CommentService(prisma).findAll(5, 10)).resolves.toEqual([
+      comment,
+    ]);
+    expect(query.limit).toHaveBeenCalledWith(5);
+    expect(query.offset).toHaveBeenCalledWith(10);
+    const fields = {
+      createdAt: { desc: () => 'createdAt DESC' },
+      id: { desc: () => 'id DESC' },
+    };
+    const [selectors] = orderBy.mock.calls[0];
+    expect(
+      selectors.map((select: (value: typeof fields) => string) =>
+        select(fields),
+      ),
+    ).toEqual(['createdAt DESC', 'id DESC']);
   });
 
   it('allows a super admin to delete a comment', async () => {
