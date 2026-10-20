@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { UnauthorizedException } from '@nestjs/common';
 import type { CredentialsService } from '../../credentials/services/credentials.service.js';
 import { LocalAuthGuard } from '../guards/local.auth.guard.js';
-import { httpContext } from './helpers/http-context.js';
+import { httpContext } from '../../../../shared/tests/helpers/http-context.js';
 
 describe('LocalAuthGuard', () => {
   const user = { id: 'user-id', role: 'USER' };

@@ -3,13 +3,13 @@ import { Reflector } from '@nestjs/core';
 import { AuthGuard } from '@nestjs/passport';
 
 import {
-  IS_PUBLIC_KEY,
   PERMISSIONS_KEY,
   ROLES_KEY,
-} from '../../shared/constants/auth-metadata.constant.js';
+} from '../../authorization/constants/authorization-metadata.constant.js';
+import { IS_PUBLIC_KEY } from '../../shared/constants/auth-metadata.constant.js';
 
-import type { UserRole } from '../../shared/contracts/user-role.type.js';
-import type { Permission } from '../../shared/enums/permission.enum.js';
+import type { UserRole } from '../../authorization/contracts/user-role.type.js';
+import type { Permissions } from '../../authorization/enums/permissions.enum.js';
 
 @Injectable()
 export class JwtAuthGuard extends AuthGuard('jwt') {
@@ -27,7 +27,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       ROLES_KEY,
       targets,
     );
-    const required = this.reflector.get<Permission[]>(
+    const required = this.reflector.get<Permissions[]>(
       PERMISSIONS_KEY,
       context.getHandler(),
     );

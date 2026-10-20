@@ -4,13 +4,13 @@ import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import type { PrismaService } from '../../../../prisma/prisma.service.js';
 import { IS_PUBLIC_KEY } from '../../shared/constants/auth-metadata.constant.js';
-import { RequirePermissions } from '../../shared/decorators/permissions.decorator.js';
+import { RequirePermissions } from '../../authorization/decorators/permissions.decorator.js';
 import { Public } from '../../shared/decorators/public.decorator.js';
-import { Roles } from '../../shared/decorators/roles.decorator.js';
-import { Permission } from '../../shared/enums/permission.enum.js';
+import { Roles } from '../../authorization/decorators/roles.decorator.js';
+import { Permissions } from '../../authorization/enums/permissions.enum.js';
 import { JwtAuthGuard } from '../guards/jwt.auth.guard.js';
 import { JwtStrategy } from '../strategies/jwt.strategy.js';
-import { httpContext } from './helpers/http-context.js';
+import { httpContext } from '../../../../shared/tests/helpers/http-context.js';
 
 describe('JwtAuthGuard and JwtStrategy', () => {
   const secret = 'test-secret-with-at-least-32-characters';
@@ -153,7 +153,7 @@ describe('JwtAuthGuard and JwtStrategy', () => {
         roleRestricted(this: void) {}
 
         @Public()
-        @RequirePermissions(Permission.UPDATE)
+        @RequirePermissions(Permissions.UPDATE)
         permissionRestricted(this: void) {}
       }
       await expect(
@@ -184,7 +184,7 @@ describe('JwtAuthGuard and JwtStrategy', () => {
   it('authenticates a public route when explicit permissions are present', async () => {
     @Public()
     class Controller {
-      @RequirePermissions(Permission.UPDATE)
+      @RequirePermissions(Permissions.UPDATE)
       route(this: void) {}
     }
     const request = {

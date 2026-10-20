@@ -1,8 +1,9 @@
+import { AuthorizationService } from '../../auth/authorization/services/authorization.service.js';
 import 'reflect-metadata';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import type { PrismaService } from '../../../prisma/prisma.service.js';
-import type { AuthorizationActor } from '../../auth/shared/contracts/authorization-actor.type.js';
+import type { AuthorizationActor } from '../../auth/authorization/contracts/authorization-actor.type.js';
 import { CommentService } from '../comment.service.js';
 import { CommentDto } from '../dto/comment.dto.js';
 
@@ -21,6 +22,7 @@ describe('comment permissions and ownership', () => {
   let stored: typeof comment | null;
   let create: ReturnType<typeof vi.fn>;
   let where: ReturnType<typeof vi.fn>;
+  let first: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     stored = { ...comment };
@@ -41,16 +43,18 @@ describe('comment permissions and ownership', () => {
         return Promise.resolve(deleted);
       },
     }));
+    first = vi.fn(({ id }: { id: string }) =>
+      Promise.resolve(stored?.id === id ? stored : null),
+    );
     const collection = {
       create,
       where,
-      first: ({ id }: { id: string }) =>
-        Promise.resolve(stored?.id === id ? stored : null),
+      first,
     };
     const prisma = {
       db: { orm: { public: { Comment: collection } } },
     } as unknown as PrismaService;
-    service = new CommentService(prisma);
+    service = new CommentService(prisma, new AuthorizationService());
   });
 
   it('returns an existing comment without requiring an actor', async () => {
@@ -73,9 +77,9 @@ describe('comment permissions and ownership', () => {
     const prisma = {
       db: { orm: { public: { Comment: { orderBy } } } },
     } as unknown as PrismaService;
-    await expect(new CommentService(prisma).findAll(5, 10)).resolves.toEqual([
-      comment,
-    ]);
+    await expect(
+      new CommentService(prisma, new AuthorizationService()).findAll(5, 10),
+    ).resolves.toEqual([comment]);
     expect(query.limit).toHaveBeenCalledWith(5);
     expect(query.offset).toHaveBeenCalledWith(10);
     const fields = {
@@ -90,19 +94,22 @@ describe('comment permissions and ownership', () => {
     ).toEqual(['createdAt DESC', 'id DESC']);
   });
 
-  it.each([owner, otherUser, admin])(
-    'denies deletion by an omitted role $role before accessing storage',
+  it.each([owner, moderator, admin])(
+    'allows comment deletion by $role within its scope',
     async (actor) => {
-      await expect(service.remove(comment.id, actor)).rejects.toBeInstanceOf(
-        ForbiddenException,
+      await expect(service.remove(comment.id, actor)).resolves.toBeUndefined();
+      expect(where).toHaveBeenCalledWith(
+        actor === owner
+          ? { id: comment.id, userId: actor.id }
+          : { id: comment.id },
       );
-      expect(where).not.toHaveBeenCalled();
-      expect(stored).toEqual(comment);
+      expect(stored).toBeNull();
+      expect(first).not.toHaveBeenCalled();
     },
   );
 
-  it.each([owner, otherUser, moderator, admin])(
-    'denies creation and editing by $role before accessing storage',
+  it.each([moderator, { ...moderator, id: owner.id }])(
+    'denies moderator creation and editing even for owner $id before storage',
     async (actor) => {
       expect(() => service.create(input, actor)).toThrow(ForbiddenException);
       await expect(
@@ -110,6 +117,7 @@ describe('comment permissions and ownership', () => {
       ).rejects.toBeInstanceOf(ForbiddenException);
       expect(create).not.toHaveBeenCalled();
       expect(where).not.toHaveBeenCalled();
+      expect(first).not.toHaveBeenCalled();
       expect(stored).toEqual(comment);
     },
   );
@@ -117,14 +125,68 @@ describe('comment permissions and ownership', () => {
   it('allows a moderator to delete their own comment', async () => {
     const actor = { ...moderator, id: owner.id };
     await expect(service.remove(comment.id, actor)).resolves.toBeUndefined();
-    expect(where).toHaveBeenCalledWith({ id: comment.id, userId: actor.id });
+    expect(where).toHaveBeenCalledWith({ id: comment.id });
     expect(stored).toBeNull();
   });
 
-  it('rejects deletion of another users comment by a moderator', async () => {
-    await expect(service.remove(comment.id, moderator)).rejects.toBeInstanceOf(
+  it('returns 404 for another users comment without deleting it', async () => {
+    await expect(service.remove(comment.id, otherUser)).rejects.toBeInstanceOf(
       NotFoundException,
     );
+    expect(where).toHaveBeenCalledWith({
+      id: comment.id,
+      userId: otherUser.id,
+    });
+    expect(stored).toEqual(comment);
+  });
+
+  it.each([owner, admin])(
+    'assigns creation to the authenticated $role',
+    async (actor) => {
+      const supplied = plainToInstance(CommentDto, {
+        content: input.content,
+        userId: 'forged',
+      });
+      await service.create(supplied, actor);
+      expect(create).toHaveBeenCalledWith({
+        content: input.content,
+        userId: actor.id,
+      });
+    },
+  );
+
+  it.each([owner, admin])(
+    'allows updates by $role within its scope',
+    async (actor) => {
+      const changes = plainToInstance(CommentDto, {
+        content: 'Edited',
+        userId: 'forged',
+      });
+      await expect(service.update(comment.id, changes, actor)).resolves.toEqual(
+        { ...comment, content: 'Edited' },
+      );
+      expect(where).toHaveBeenCalledWith(
+        actor === owner
+          ? { id: comment.id, userId: actor.id }
+          : { id: comment.id },
+      );
+      expect(stored).toEqual({ ...comment, content: 'Edited' });
+      expect(first).not.toHaveBeenCalled();
+    },
+  );
+
+  it('returns 404 for another users update without changing ownership or content', async () => {
+    const supplied = plainToInstance(CommentDto, {
+      content: 'Edited',
+      userId: otherUser.id,
+    });
+    await expect(
+      service.update(comment.id, supplied, otherUser),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(where).toHaveBeenCalledWith({
+      id: comment.id,
+      userId: otherUser.id,
+    });
     expect(stored).toEqual(comment);
   });
 

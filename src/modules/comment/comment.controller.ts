@@ -14,13 +14,13 @@ import {
 
 // Decorators
 import { CurrentUser } from '../auth/shared/decorators/current.user.decorator.js';
-import { RequirePermissions } from '../auth/shared/decorators/permissions.decorator.js';
+import { RequirePermissions } from '../auth/authorization/decorators/permissions.decorator.js';
 import { Public } from '../auth/shared/decorators/public.decorator.js';
-import { Policy } from '../auth/shared/decorators/policy.decorator.js';
+import { Policy } from '../auth/authorization/decorators/policy.decorator.js';
 
 // Authorization
-import type { AuthorizationActor } from '../auth/shared/contracts/authorization-actor.type.js';
-import { Permission } from '../auth/shared/enums/permission.enum.js';
+import type { AuthorizationActor } from '../auth/authorization/contracts/authorization-actor.type.js';
+import { Permissions } from '../auth/authorization/enums/permissions.enum.js';
 import { COMMENT_POLICY } from './policy/comment.policy.js';
 
 // Shared
@@ -36,7 +36,7 @@ export class CommentController {
   constructor(private readonly comments: CommentService) {}
 
   @Post()
-  @RequirePermissions(Permission.CREATE)
+  @RequirePermissions(Permissions.CREATE)
   create(@Body() input: CommentDto, @CurrentUser() actor: AuthorizationActor) {
     return this.comments.create(input, actor);
   }
@@ -54,7 +54,7 @@ export class CommentController {
   }
 
   @Patch(':id')
-  @RequirePermissions(Permission.UPDATE)
+  @RequirePermissions(Permissions.UPDATE)
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() input: CommentDto,
@@ -64,7 +64,7 @@ export class CommentController {
   }
 
   @Delete(':id')
-  @RequirePermissions(Permission.DELETE)
+  @RequirePermissions(Permissions.DELETE)
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(
     @Param('id', ParseUUIDPipe) id: string,
