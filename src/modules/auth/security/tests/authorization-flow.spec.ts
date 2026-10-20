@@ -349,19 +349,19 @@ describe('HTTP authentication and authorization', () => {
       path: 'notes',
       service: notes,
       payload: { title: 'A note', content: 'Content' },
-      writer: 'MODERATOR',
-      deniedWriter: 'USER',
+      writers: ['MODERATOR', 'SUPER_ADMIN'] as UserRole[],
+      deleter: 'SUPER_ADMIN',
     },
     {
       path: 'comments',
       service: comments,
       payload: { content: 'A comment' },
-      writer: 'USER',
-      deniedWriter: 'MODERATOR',
+      writers: [] as UserRole[],
+      deleter: 'MODERATOR',
     },
   ] as const)(
     '$path resource routes',
-    ({ path, service, payload, writer, deniedWriter }) => {
+    ({ path, service, payload, writers, deleter }) => {
       it('serves public lists with validated pagination', async () => {
         await request(app.getHttpServer())
           .get(`/${path}?limit=5&offset=10`)
@@ -395,58 +395,70 @@ describe('HTTP authentication and authorization', () => {
         expect(service.findOne).not.toHaveBeenCalled();
       });
 
-      it('passes the authenticated writer to creation and update', async () => {
-        await request(app.getHttpServer())
-          .post(`/${path}`)
-          .auth(token(writer), { type: 'bearer' })
-          .send(payload)
-          .expect(201);
-        await request(app.getHttpServer())
-          .patch(`/${path}/${resourceId}`)
-          .auth(token(writer), { type: 'bearer' })
-          .send(payload)
-          .expect(200);
-        const actor = users.find((user) => user.role === writer);
-        expect(service.create).toHaveBeenCalledWith(payload, actor);
-        expect(service.update).toHaveBeenCalledWith(resourceId, payload, actor);
-      });
-
-      it('denies readers without write permissions before calling the service', async () => {
-        await request(app.getHttpServer())
-          .post(`/${path}`)
-          .auth(token(deniedWriter), { type: 'bearer' })
-          .send(payload)
-          .expect(403);
-        await request(app.getHttpServer())
-          .patch(`/${path}/${resourceId}`)
-          .auth(token(deniedWriter), { type: 'bearer' })
-          .send(payload)
-          .expect(403);
-        expect(service.create).not.toHaveBeenCalled();
-        expect(service.update).not.toHaveBeenCalled();
-      });
-
-      it('rejects invalid content and submitted ownership fields', async () => {
-        for (const body of [
-          { ...payload, content: '' },
-          { ...payload, userId: users[0].id },
-        ]) {
+      it.each<UserRole>(['USER', 'MODERATOR', 'SUPER_ADMIN'])(
+        'enforces creation and update permissions for %s',
+        async (role) => {
+          const allowed = writers.includes(role);
           await request(app.getHttpServer())
             .post(`/${path}`)
-            .auth(token(writer), { type: 'bearer' })
-            .send(body)
-            .expect(400);
-        }
-        expect(service.create).not.toHaveBeenCalled();
-      });
+            .auth(token(role), { type: 'bearer' })
+            .send(payload)
+            .expect(allowed ? 201 : 403);
+          await request(app.getHttpServer())
+            .patch(`/${path}/${resourceId}`)
+            .auth(token(role), { type: 'bearer' })
+            .send(payload)
+            .expect(allowed ? 200 : 403);
+          if (allowed) {
+            const actor = users.find((user) => user.role === role);
+            expect(service.create).toHaveBeenCalledWith(payload, actor);
+            expect(service.update).toHaveBeenCalledWith(
+              resourceId,
+              payload,
+              actor,
+            );
+          } else {
+            expect(service.create).not.toHaveBeenCalled();
+            expect(service.update).not.toHaveBeenCalled();
+          }
+        },
+      );
 
-      it('returns no content after an authorized deletion', async () => {
-        await request(app.getHttpServer())
-          .delete(`/${path}/${resourceId}`)
-          .auth(token('SUPER_ADMIN'), { type: 'bearer' })
-          .expect(204, '');
-        expect(service.remove).toHaveBeenCalledWith(resourceId, users[2]);
-      });
+      for (const writer of writers) {
+        it(`rejects invalid content and ownership fields from ${writer}`, async () => {
+          for (const body of [
+            { ...payload, content: '' },
+            { ...payload, userId: users[0].id },
+          ]) {
+            await request(app.getHttpServer())
+              .post(`/${path}`)
+              .auth(token(writer), { type: 'bearer' })
+              .send(body)
+              .expect(400);
+          }
+          expect(service.create).not.toHaveBeenCalled();
+        });
+      }
+
+      it.each<UserRole>(['USER', 'MODERATOR', 'SUPER_ADMIN'])(
+        'enforces deletion permissions for %s',
+        async (role) => {
+          const allowed = role === deleter;
+          const response = await request(app.getHttpServer())
+            .delete(`/${path}/${resourceId}`)
+            .auth(token(role), { type: 'bearer' })
+            .expect(allowed ? 204 : 403);
+          if (allowed) {
+            expect(response.text).toBe('');
+            expect(service.remove).toHaveBeenCalledWith(
+              resourceId,
+              users.find((user) => user.role === role),
+            );
+          } else {
+            expect(service.remove).not.toHaveBeenCalled();
+          }
+        },
+      );
 
       it('blocks anonymous writes before calling the service', async () => {
         await request(app.getHttpServer())

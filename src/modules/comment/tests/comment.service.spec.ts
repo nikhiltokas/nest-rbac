@@ -53,28 +53,6 @@ describe('comment permissions and ownership', () => {
     service = new CommentService(prisma);
   });
 
-  it('assigns new comments to the authenticated user', async () => {
-    const suppliedInput = plainToInstance(CommentDto, {
-      content: input.content,
-      userId: 'someone-else',
-    });
-    await expect(service.create(suppliedInput, owner)).resolves.toEqual(
-      comment,
-    );
-    expect(create).toHaveBeenCalledWith({
-      content: input.content,
-      userId: owner.id,
-    });
-  });
-
-  it('allows the owner to edit a comment', async () => {
-    const changes = plainToInstance(CommentDto, { content: 'Edited comment' });
-    await expect(service.update(comment.id, changes, owner)).resolves.toEqual({
-      ...comment,
-      content: changes.content,
-    });
-  });
-
   it('returns an existing comment without requiring an actor', async () => {
     await expect(service.findOne(comment.id)).resolves.toEqual(comment);
   });
@@ -112,38 +90,19 @@ describe('comment permissions and ownership', () => {
     ).toEqual(['createdAt DESC', 'id DESC']);
   });
 
-  it('allows a super admin to delete a comment', async () => {
-    await expect(service.remove(comment.id, admin)).resolves.toBeUndefined();
-    expect(stored).toBeNull();
-  });
-
-  it('rejects an edit by another user', async () => {
-    await expect(
-      service.update(comment.id, input, otherUser),
-    ).rejects.toBeInstanceOf(NotFoundException);
-    expect(stored).toEqual(comment);
-  });
-
-  it.each([owner, { ...moderator, id: owner.id }])(
-    'allows a $role to delete their own comment',
-    async (actor) => {
-      await expect(service.remove(comment.id, actor)).resolves.toBeUndefined();
-      expect(stored).toBeNull();
-    },
-  );
-
-  it.each([otherUser, moderator])(
-    'rejects deletion of another users comment by a $role',
+  it.each([owner, otherUser, admin])(
+    'denies deletion by an omitted role $role before accessing storage',
     async (actor) => {
       await expect(service.remove(comment.id, actor)).rejects.toBeInstanceOf(
-        NotFoundException,
+        ForbiddenException,
       );
+      expect(where).not.toHaveBeenCalled();
       expect(stored).toEqual(comment);
     },
   );
 
-  it.each([moderator, { ...moderator, id: owner.id }])(
-    'denies creation and editing by moderator $id before accessing storage',
+  it.each([owner, otherUser, moderator, admin])(
+    'denies creation and editing by $role before accessing storage',
     async (actor) => {
       expect(() => service.create(input, actor)).toThrow(ForbiddenException);
       await expect(
@@ -155,35 +114,26 @@ describe('comment permissions and ownership', () => {
     },
   );
 
-  it('allows a super admin to edit and delete another users comment', async () => {
-    const changes = plainToInstance(CommentDto, { content: 'Admin edit' });
-    await expect(service.update(comment.id, changes, admin)).resolves.toEqual({
-      ...comment,
-      content: changes.content,
-    });
-    await expect(service.remove(comment.id, admin)).resolves.toBeUndefined();
+  it('allows a moderator to delete their own comment', async () => {
+    const actor = { ...moderator, id: owner.id };
+    await expect(service.remove(comment.id, actor)).resolves.toBeUndefined();
+    expect(where).toHaveBeenCalledWith({ id: comment.id, userId: actor.id });
     expect(stored).toBeNull();
   });
 
-  it.each([owner, admin])(
-    'rejects an update to a missing comment for $role',
-    async (actor) => {
-      await expect(
-        service.update('missing', input, actor),
-      ).rejects.toBeInstanceOf(NotFoundException);
-      expect(stored).toEqual(comment);
-    },
-  );
+  it('rejects deletion of another users comment by a moderator', async () => {
+    await expect(service.remove(comment.id, moderator)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    expect(stored).toEqual(comment);
+  });
 
-  it.each([owner, moderator, admin])(
-    'rejects deletion of a missing comment for $role',
-    async (actor) => {
-      await expect(service.remove('missing', actor)).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
-      expect(stored).toEqual(comment);
-    },
-  );
+  it('rejects deletion of a missing comment for a moderator', async () => {
+    await expect(service.remove('missing', moderator)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    expect(stored).toEqual(comment);
+  });
 
   it('denies direct service calls with an unknown role', async () => {
     const actor = {

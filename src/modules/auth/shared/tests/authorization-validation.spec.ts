@@ -66,6 +66,16 @@ describe('authorization metadata validation', () => {
       expect(isPermissionPolicy(policy)).toBe(true);
     });
 
+    it.each([
+      { MODERATOR: [Permission.READ, Permission.DELETE] },
+      { SUPER_ADMIN: [Permission.CREATE] },
+      { SUPER_ADMIN: [Permission.DELETE], MODERATOR: [Permission.READ] },
+      { MODERATOR: [], USER: [] },
+      { USER: [] },
+    ])('accepts partial policies: %o', (partial) => {
+      expect(isPermissionPolicy(partial)).toBe(true);
+    });
+
     it('accepts a frozen policy without modifying its grants', () => {
       const frozen = Object.freeze({
         SUPER_ADMIN: Object.freeze([Permission.READ]),
@@ -83,7 +93,15 @@ describe('authorization metadata validation', () => {
         [],
         'policy',
         {},
-        { MODERATOR: [], USER: [] },
+        { UNKNOWN: [] },
+        { toString: [] },
+        { constructor: [] },
+        { ['__proto__']: [] },
+        { MODERATOR: undefined },
+        { MODERATOR: null },
+        { MODERATOR: Permission.READ },
+        { MODERATOR: ['UNKNOWN'] },
+        { MODERATOR: Array(1) },
         { SUPER_ADMIN: [], MODERATOR: [], UNKNOWN: [] },
         { ...policy, UNKNOWN: [] },
         { ...policy, USER: undefined },

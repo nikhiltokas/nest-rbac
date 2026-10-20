@@ -1,6 +1,8 @@
 import 'reflect-metadata';
 import { ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { COMMENT_POLICY } from '../../../comment/policy/comment.policy.js';
+import { POLICY_KEY } from '../../shared/constants/auth-metadata.constant.js';
 import type { PermissionPolicy } from '../../shared/contracts/permission-policy.type.js';
 import type { UserRole } from '../../shared/contracts/user-role.type.js';
 import { RequirePermissions } from '../../shared/decorators/permissions.decorator.js';
@@ -12,10 +14,19 @@ import { PermissionsGuard } from '../guards/permissions.guard.js';
 import { RolesGuard } from '../guards/roles.guard.js';
 import { httpContext } from './helpers/http-context.js';
 
-const TEST_POLICY: PermissionPolicy = {
+const TEST_POLICY = {
   SUPER_ADMIN: Object.values(Permission),
   MODERATOR: [Permission.CREATE, Permission.READ, Permission.UPDATE],
   USER: [Permission.READ],
+} satisfies PermissionPolicy;
+
+const ADMIN_POLICY: PermissionPolicy = {
+  SUPER_ADMIN: [Permission.READ, Permission.DELETE],
+};
+
+const MULTI_ROLE_POLICY: PermissionPolicy = {
+  SUPER_ADMIN: [Permission.READ, Permission.DELETE],
+  MODERATOR: [Permission.READ],
 };
 
 describe('RequirePermissions and PermissionsGuard', () => {
@@ -121,10 +132,11 @@ describe('RequirePermissions and PermissionsGuard', () => {
   });
 
   it('checks the same action against each controllers own policy', () => {
-    @Policy({
+    const MODERATED_POLICY: PermissionPolicy = {
       ...TEST_POLICY,
       MODERATOR: [...TEST_POLICY.MODERATOR, Permission.DELETE],
-    })
+    };
+    @Policy(MODERATED_POLICY)
     class ModeratedController {
       @RequirePermissions(Permission.DELETE)
       remove(this: void) {}
@@ -145,7 +157,11 @@ describe('RequirePermissions and PermissionsGuard', () => {
   });
 
   it('uses the policy even for super admins instead of assuming a bypass', () => {
-    @Policy({ ...TEST_POLICY, SUPER_ADMIN: [] })
+    const RESTRICTED_ADMIN_POLICY: PermissionPolicy = {
+      ...TEST_POLICY,
+      SUPER_ADMIN: [],
+    };
+    @Policy(RESTRICTED_ADMIN_POLICY)
     class RestrictedAdminController {
       @RequirePermissions(Permission.DELETE)
       remove(this: void) {}
@@ -159,5 +175,59 @@ describe('RequirePermissions and PermissionsGuard', () => {
         ),
       ),
     ).toThrow('Missing permissions: DELETE');
+  });
+
+  describe.each([
+    {
+      name: 'moderator-only',
+      policy: COMMENT_POLICY,
+      readers: ['MODERATOR'],
+      deleters: ['MODERATOR'],
+    },
+    {
+      name: 'admin-only',
+      policy: ADMIN_POLICY,
+      readers: ['SUPER_ADMIN'],
+      deleters: ['SUPER_ADMIN'],
+    },
+    {
+      name: 'multi-role',
+      policy: MULTI_ROLE_POLICY,
+      readers: ['SUPER_ADMIN', 'MODERATOR'],
+      deleters: ['SUPER_ADMIN'],
+    },
+  ])('$name named policy', ({ policy, readers, deleters }) => {
+    @Policy(policy)
+    class NamedPolicyController {
+      @RequirePermissions(Permission.READ)
+      read(this: void) {}
+
+      @RequirePermissions(Permission.DELETE)
+      remove(this: void) {}
+    }
+
+    it('references the policy definition directly', () => {
+      expect(reflector.get(POLICY_KEY, NamedPolicyController)).toBe(policy);
+    });
+
+    it.each<UserRole>(['SUPER_ADMIN', 'MODERATOR', 'USER'])(
+      'enforces the declared permissions for %s',
+      (role) => {
+        for (const [handler, allowed] of [
+          [NamedPolicyController.prototype.read, readers],
+          [NamedPolicyController.prototype.remove, deleters],
+        ] as const) {
+          const check = () =>
+            guard.canActivate(
+              httpContext({ user: { role } }, handler, NamedPolicyController),
+            );
+          if (allowed.includes(role)) {
+            expect(check()).toBe(true);
+          } else {
+            expect(check).toThrow(ForbiddenException);
+          }
+        }
+      },
+    );
   });
 });

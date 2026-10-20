@@ -6,6 +6,7 @@ import {
   Patch,
   Post,
   Scope,
+  SetMetadata,
   type Type,
 } from '@nestjs/common';
 
@@ -17,7 +18,9 @@ import {
 } from '@nestjs/core';
 
 import { Test, type TestingModule } from '@nestjs/testing';
+import { COMMENT_POLICY } from '../../../comment/policy/comment.policy.js';
 import { NOTE_POLICY } from '../../../note/policy/note.policy.js';
+import { POLICY_KEY } from '../../shared/constants/auth-metadata.constant.js';
 import { RequirePermissions } from '../../shared/decorators/permissions.decorator.js';
 import { Policy } from '../../shared/decorators/policy.decorator.js';
 import { Public } from '../../shared/decorators/public.decorator.js';
@@ -43,6 +46,35 @@ describe('permission route validation during application bootstrap', () => {
 
   afterEach(async () => {
     await module?.close();
+  });
+
+  it('accepts a named moderator-only policy during bootstrap', async () => {
+    @Controller('comments')
+    @Policy(COMMENT_POLICY)
+    class CommentsController {
+      @Delete(':id')
+      @RequirePermissions(Permission.DELETE)
+      remove(this: void) {}
+    }
+    await expect(bootstrap(CommentsController)).resolves.toBeDefined();
+  });
+
+  it.each([
+    { name: 'empty', policy: {} },
+    { name: 'unknown role', policy: { UNKNOWN: [Permission.READ] } },
+    { name: 'invalid permission', policy: { MODERATOR: ['UNKNOWN'] } },
+    { name: 'undefined grant', policy: { MODERATOR: undefined } },
+  ])('rejects $name policies during bootstrap', async ({ policy }) => {
+    @Controller('comments')
+    @SetMetadata(POLICY_KEY, policy)
+    class CommentsController {
+      @Get()
+      @RequirePermissions(Permission.READ)
+      list(this: void) {}
+    }
+    await expect(bootstrap(CommentsController)).rejects.toThrow(
+      'CommentsController has invalid permissionPolicy metadata.',
+    );
   });
 
   it('rejects invalid route declarations during application bootstrap', async () => {

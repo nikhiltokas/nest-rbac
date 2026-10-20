@@ -33,11 +33,11 @@ export function isPermissionPolicy(value: unknown): value is PermissionPolicy {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return false;
   }
-  const roles = Object.values(Role);
+  const roles = Reflect.ownKeys(value);
   return (
-    Reflect.ownKeys(value).length === roles.length &&
+    roles.length > 0 &&
     roles.every((role) => {
-      if (!Object.hasOwn(value, role)) return false;
+      if (!isUserRole(role)) return false;
       const granted: unknown = Reflect.get(value, role);
       return Array.isArray(granted) && Array.from(granted).every(isPermission);
     })

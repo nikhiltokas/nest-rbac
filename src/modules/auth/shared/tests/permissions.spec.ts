@@ -40,6 +40,22 @@ describe('assertPermissions', () => {
     );
   });
 
+  it.each<UserRole>(['USER', 'SUPER_ADMIN'])(
+    'denies omitted role %s in a moderator-only policy',
+    (role) => {
+      const moderatorPolicy: PermissionPolicy = {
+        MODERATOR: [Permission.READ, Permission.DELETE],
+      };
+      expect(() =>
+        assertPermissions(moderatorPolicy, 'MODERATOR', Permission.DELETE),
+      ).not.toThrow();
+      expect(() =>
+        assertPermissions(moderatorPolicy, role, Permission.READ),
+      ).toThrow(ForbiddenException);
+      expect(Object.keys(moderatorPolicy)).toEqual(['MODERATOR']);
+    },
+  );
+
   it('requires explicit grants for super admins', () => {
     expect(() =>
       assertPermissions(policy, 'SUPER_ADMIN', Permission.DELETE),

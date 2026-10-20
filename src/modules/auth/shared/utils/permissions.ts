@@ -8,7 +8,7 @@ export function assertPermissions(
   role: UserRole,
   ...required: [Permission, ...Permission[]]
 ): void {
-  const granted = Object.hasOwn(policy, role) ? policy[role] : [];
+  const granted = Object.hasOwn(policy, role) ? (policy[role] ?? []) : [];
   const missing = required.filter(
     (permission) => !granted.includes(permission),
   );
